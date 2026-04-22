@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "905055791351",
+    "project_id": "prj2026-mdp-f8e32",
+    "storage_bucket": "prj2026-mdp-f8e32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:905055791351:android:00b60f83167f2e2ba88bf2",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_fasum"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "905055791351-88adg3r6akv4jqbf6fhq8r368jurlu65.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBemDRAKdK57MPJLykR8LqtnLPCy7WOAkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "905055791351-88adg3r6akv4jqbf6fhq8r368jurlu65.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
