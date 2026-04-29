@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_fasum/screens/home_screen.dart';
+import 'package:flutter_application_fasum/screens/sign_in_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -16,10 +18,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _fullNameController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  
+
   bool _isLoading = false;
-  bool _isPasswordVisible = true; // Set true untuk mulai dengan tersembunyi
-  bool _isConfirmPasswordVisible = true;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   void _showErrorMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -32,16 +34,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      final userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
 
-      await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-        'fullName': _fullNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'createdAt': Timestamp.now(),
-      });
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .set({
+            'fullName': _fullNameController.text.trim(),
+            'email': _emailController.text.trim(),
+            'createdAt': Timestamp.now(),
+          });
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -57,7 +63,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // Helper untuk membuat dekorasi input agar mirip gambar
   InputDecoration _inputStyle(String hint, IconData icon, {Widget? suffix}) {
     return InputDecoration(
       hintText: hint,
@@ -67,7 +72,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.grey),
+        borderSide: const BorderSide(
+          color: Color(0xFFE0E0E0),
+        ), // Pengganti shade300
       ),
     );
   }
@@ -82,20 +89,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, // Agar teks ke kiri
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 40),
                 const Text(
                   'Sign Up',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 40),
-                
+
                 // Full Name
                 TextFormField(
                   controller: _fullNameController,
                   decoration: _inputStyle('Full Name', Icons.person_outline),
-                  validator: (value) => value!.isEmpty ? 'Enter your name' : null,
+                  validator: (value) =>
+                      value!.isEmpty ? 'Enter your name' : null,
                 ),
                 const SizedBox(height: 16),
 
@@ -104,39 +116,56 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   controller: _emailController,
                   decoration: _inputStyle('Email', Icons.email_outlined),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) => !value!.contains('@') ? 'Invalid email' : null,
+                  validator: (value) =>
+                      !value!.contains('@') ? 'Invalid email' : null,
                 ),
                 const SizedBox(height: 16),
 
                 // Password
                 TextFormField(
                   controller: _passwordController,
-                  obscureText: _isPasswordVisible,
+                  obscureText: !_isPasswordVisible,
                   decoration: _inputStyle(
                     'Password',
                     Icons.lock_outline,
                     suffix: IconButton(
-                      icon: Icon(_isPasswordVisible ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
                     ),
                   ),
-                  validator: (value) => value!.length < 6 ? 'Min 6 characters' : null,
+                  validator: (value) =>
+                      value!.length < 6 ? 'Min 6 characters' : null,
                 ),
                 const SizedBox(height: 16),
 
                 // Confirm Password
                 TextFormField(
                   controller: _confirmPasswordController,
-                  obscureText: _isConfirmPasswordVisible,
+                  obscureText: !_isConfirmPasswordVisible,
                   decoration: _inputStyle(
                     'Confirm Password',
                     Icons.lock_reset_outlined,
                     suffix: IconButton(
-                      icon: Icon(_isConfirmPasswordVisible ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible),
+                      icon: Icon(
+                        _isConfirmPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(
+                        () => _isConfirmPasswordVisible =
+                            !_isConfirmPasswordVisible,
+                      ),
                     ),
                   ),
-                  validator: (value) => value != _passwordController.text ? 'Not match' : null,
+                  validator: (value) => value != _passwordController.text
+                      ? 'Passwords do not match'
+                      : null,
                 ),
                 const SizedBox(height: 32),
 
@@ -145,22 +174,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   child: _isLoading
                       ? const CircularProgressIndicator()
                       : SizedBox(
-                          width: 150, // Lebar tombol sesuai gambar
+                          width: 150,
                           height: 50,
                           child: ElevatedButton(
                             onPressed: _signUp,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFF3E5F5), // Warna ungu muda
-                              foregroundColor: const Color(0xFF7B1FA2), // Warna teks ungu
+                              backgroundColor: const Color(0xFFF3E5F5),
+                              foregroundColor: const Color(0xFF7B1FA2),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(30),
                               ),
                             ),
-                            child: const Text('Sign Up', style: TextStyle(fontWeight: FontWeight.bold)),
+                            child: const Text(
+                              'Sign Up',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                 ),
+
+                const SizedBox(height: 30),
+
+                Center(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 14,
+                      ),
+                      text: "Already have an account? ",
+                      children: [
+                        TextSpan(
+                          text: "Sign In",
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              // Navigasi ke halaman Sign In
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SignInScreen(),
+                                ),
+                              );
+                            },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),

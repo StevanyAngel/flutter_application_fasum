@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_fasum/screens/home_screen.dart';
 import 'package:flutter_application_fasum/screens/sign_up_screen.dart';
@@ -14,13 +15,15 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  
-  bool _isLoading = false;
-  bool _isPasswordVisible = true;
 
-  void _showErrorMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
+  bool _isLoading = false;
+  bool _isPasswordVisible = false;
+
+  void _navigateToHome() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const HomeScreen()),
+      (route) => false,
     );
   }
 
@@ -34,20 +37,17 @@ class _SignInScreenState extends State<SignInScreen> {
         password: _passwordController.text,
       );
 
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      String message = "An error occurred";
-      if (e.code == 'user-not-found') message = "No user found for that email.";
-      else if (e.code == 'wrong-password') message = "Wrong password provided.";
-      else message = e.message ?? message;
-      
-      _showErrorMessage(message);
+      if (mounted) _navigateToHome();
+    } on FirebaseAuthException catch (error) {
+      String message = 'An error occurred';
+      if (error.code == 'user-not-found')
+        message = 'No user found for that email.';
+      else if (error.code == 'wrong-password')
+        message = 'Wrong password.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -62,7 +62,7 @@ class _SignInScreenState extends State<SignInScreen> {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.grey),
+        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
       ),
     );
   }
@@ -82,75 +82,108 @@ class _SignInScreenState extends State<SignInScreen> {
                 const SizedBox(height: 60),
                 const Text(
                   'Sign In',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87),
-                ),
-                const Text(
-                  'Welcome back! Please enter your details.',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 40),
 
-                // Email Field
+                // Email
                 TextFormField(
                   controller: _emailController,
-                  decoration: _inputStyle('Email', Icons.email_outlined),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) => (value == null || value.isEmpty) ? 'Enter your email' : null,
+                  decoration: _inputStyle('Email', Icons.email_outlined),
+                  validator: (value) => (value == null || !value.contains('@'))
+                      ? 'Enter a valid email'
+                      : null,
                 ),
                 const SizedBox(height: 16),
 
-                // Password Field
+                // Password
                 TextFormField(
                   controller: _passwordController,
-                  obscureText: _isPasswordVisible,
+                  obscureText: !_isPasswordVisible,
                   decoration: _inputStyle(
                     'Password',
                     Icons.lock_outline,
                     suffix: IconButton(
-                      icon: Icon(_isPasswordVisible ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () => setState(
+                        () => _isPasswordVisible = !_isPasswordVisible,
+                      ),
                     ),
                   ),
-                  validator: (value) => (value == null || value.isEmpty) ? 'Enter your password' : null,
+                  validator: (value) => (value == null || value.isEmpty)
+                      ? 'Enter password'
+                      : null,
                 ),
                 const SizedBox(height: 32),
 
-                // Login Button
+                // Button Sign In
                 Center(
                   child: _isLoading
                       ? const CircularProgressIndicator()
                       : SizedBox(
-                          width: double.infinity, // Tombol penuh untuk Sign In
-                          height: 55,
+                          width: 150,
+                          height: 50,
                           child: ElevatedButton(
                             onPressed: _signIn,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF7B1FA2), // Ungu lebih tua untuk Sign In
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              backgroundColor: const Color(
+                                0xFFF3E5F5,
+                              ), // Ungu Muda
+                              foregroundColor: const Color(
+                                0xFF7B1FA2,
+                              ), // Teks Ungu
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
                             ),
-                            child: const Text('Sign In', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            child: const Text(
+                              'Sign In',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                 ),
-                
-                const SizedBox(height: 20),
+                const SizedBox(height: 40),
 
-                // Navigate to Sign Up
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text("Don't have an account?"),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                        );
-                      },
-                      child: const Text('Sign Up', style: TextStyle(color: Color(0xFF7B1FA2), fontWeight: FontWeight.bold)),
+                // Text "Don't have an account? Sign Up"
+                Center(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 14,
+                      ),
+                      text: "Don't have an account? ",
+                      children: [
+                        TextSpan(
+                          text: "Sign Up",
+                          style: const TextStyle(
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SignUpScreen(),
+                                ),
+                              );
+                            },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
