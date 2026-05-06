@@ -16,7 +16,6 @@ class AddPostScreen extends StatefulWidget {
 }
 
 class _AddPostScreenState extends State<AddPostScreen> {
-  File? _image;
   XFile? _pickedFile;
   Uint8List? _imageBytes;
   String? _base64Image;
