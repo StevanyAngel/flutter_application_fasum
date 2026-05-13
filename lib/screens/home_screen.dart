@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_application_fasum/screens/add_post_screen.dart';
+import 'package:flutter_application_fasum/screens/detail_screen.dart';
 import 'package:flutter_application_fasum/screens/sign_in_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,25 +17,31 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<void> signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
+    Navigator.pushReplacement(
+      context,
       MaterialPageRoute(builder: (context) => const SignInScreen()),
     );
   }
 
-  String formatTime(dynamic createdAtData) {
-    if (createdAtData == null) return "Baru saja";
+  String formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
 
-    DateTime dateTime;
-    if (createdAtData is Timestamp) {
-      dateTime = createdAtData.toDate();
-    } else if (createdAtData is String) {
-      dateTime = DateTime.parse(createdAtData);
-    } else {
-      return "Format salah";
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds} secs ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} mins ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours} hrs ago';
+    } else if (diff.inHours < 48) {
+      return '1 day ago';
     }
-
     return DateFormat('dd/MM/yyyy').format(dateTime);
+  }
+
+  Future<void> _refreshPosts() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    setState(() {});
   }
 
   @override
@@ -42,105 +49,151 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Home Screen'),
-        backgroundColor: const Color(0xFFE1BEE7),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           IconButton(
-            onPressed: () => signOut(context),
             icon: const Icon(Icons.logout),
+            onPressed: () => signOut(context),
+            tooltip: 'Sign Out',
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('posts')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError)
-            return const Center(child: Text('Terjadi kesalahan'));
-          if (!snapshot.hasData)
-            return const Center(child: CircularProgressIndicator());
+      body: RefreshIndicator(
+        onRefresh: _refreshPosts,
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('posts')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final posts = snapshot.data!.docs;
+            final posts = snapshot.data!.docs.toList();
 
-          return ListView.builder(
-            itemCount: posts.length,
-            itemBuilder: (context, index) {
-              final data = posts[index].data() as Map<String, dynamic>;
+            return ListView.builder(
+              itemCount: posts.length,
+              itemBuilder: (context, index) {
+                final data = posts[index].data() as Map<String, dynamic>;
+                final imageBase64 = data['image'];
+                final description = data['description'] ?? '';
+                final fullName = data['fullName'] ?? 'Anonim';
+                final category = data['category'] ?? 'Lainnya';
+                final createdAtValue = data['createdAt'];
+                DateTime createdAt = DateTime.now();
 
-              return Card(
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 15,
-                  vertical: 10,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                elevation: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Tampilan Gambar
-                    if (data['image'] != null)
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(15),
-                        ),
-                        child: Image.memory(
-                          base64Decode(data['image']),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: 220,
+                if (createdAtValue is Timestamp) {
+                  createdAt = createdAtValue.toDate();
+                } else if (createdAtValue is DateTime) {
+                  createdAt = createdAtValue;
+                } else if (createdAtValue is String) {
+                  createdAt =
+                      DateTime.tryParse(createdAtValue) ?? DateTime.now();
+                }
+
+                return InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DetailScreen(
+                          imageBase64: imageBase64 ?? '',
+                          description: description,
+                          createdAt: createdAt,
+                          fullName: fullName,
+                          latitude: data['latitude'] ?? 0.0,
+                          longitude: data['longitude'] ?? 0.0,
+                          category: category,
+                          heroTag: 'post_$index',
                         ),
                       ),
-
-                    // Bagian Teks (Nama, Tanggal, Deskripsi)
-                    Padding(
-                      padding: const EdgeInsets.all(15),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            formatTime(data['createdAt']),
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            data['fullName'] ?? 'Anonim',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            data['description'] ?? '',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
+                    );
+                  },
+                  child: Card(
+                    elevation: 1,
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    shadowColor: Theme.of(context).colorScheme.shadow,
+                    margin: const EdgeInsets.all(10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (imageBase64 != null)
+                          Hero(
+                            tag: 'post_$index',
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(10),
+                              ),
+                              child: Image.memory(
+                                base64Decode(imageBase64),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: 200,
+                              ),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                formatTime(createdAt),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                fullName,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                description,
+                                style: const TextStyle(fontSize: 16),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                category,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.blueGrey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Navigator.of(context).push(
+          Navigator.push(
+            context,
             MaterialPageRoute(builder: (context) => const AddPostScreen()),
           );
         },
-        backgroundColor: const Color(0xFFF3E5F5),
-        child: const Icon(Icons.add, color: Colors.black),
+        child: const Icon(Icons.add),
       ),
     );
   }
