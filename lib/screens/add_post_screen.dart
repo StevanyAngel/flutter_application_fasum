@@ -1,5 +1,6 @@
 import 'dart:convert';
-
+import 'package:http/http.dart' as http; // Ditambahkan untuk hit API Gemini
+import 'package:shimmer/shimmer.dart'; // Ditambahkan untuk efek loading AI
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -24,6 +25,139 @@ class _AddPostScreenState extends State<AddPostScreen> {
   bool _isUploading = false;
   double? _latitude;
   double? _longitude;
+
+  // Variabel Pendukung Fitur AI Gemini
+  String? _aiCategory;
+  String? _aiDescription;
+  bool _isGenerating = false;
+  final String _apiKey = 'AQ.Ab8RN6KRjFIppfT4BIHDs5t9yO9AUau9a1dllNLNU5kv5oOv1Q';
+
+  List<String> categories = [
+    'Jalan Rusak',
+    'Marka Pudar',
+    'Lampu Mati',
+    'Trotoar Rusak',
+    'Rambu Rusak',
+    'Jembatan Rusak',
+    'Sampah Menumpuk',
+    'Saluran Tersumbat',
+    'Sungai Tercemar',
+    'Sampah Sungai',
+    'Pohon Tumbang',
+    'Taman Rusak',
+    'Fasilitas Rusak',
+    'Pipa Bocor',
+    'Vandalisme',
+    'Banjir',
+    'Lainnya',
+  ];
+
+  void _showCategorySelection() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (BuildContext context) {
+        return ListView(
+          shrinkWrap: true,
+          children: categories.map((category) {
+            return ListTile(
+              title: Text(category),
+              onTap: () {
+                setState(() {
+                  _aiCategory = category;
+                });
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Future<void> _generateDescriptionWithAI() async {
+    if (_imageBytes == null) return;
+    setState(() => _isGenerating = true);
+    try {
+      final base64Image = _base64Image ?? base64Encode(_imageBytes!);
+
+      final url =
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
+
+      final body = jsonEncode({
+        "contents": [
+          {
+            "parts": [
+              {
+                "inlineData": {"mimeType": "image/jpeg", "data": base64Image},
+              },
+              {
+                "text":
+                    "Berdasarkan foto ini, identifikasi satu kategori utama kerusakan fasilitas umum "
+                    "dari daftar berikut: Jalan Rusak, Marka Pudar, Lampu Mati, Trotoar Rusak, "
+                    "Rambu Rusak, Jembatan Rusak, Sampah Menumpuk, Saluran Tersumbat, Sungai Tercemar, "
+                    "Sampah Sungai, Pohon Tumbang, Taman Rusak, Fasilitas Rusak, Pipa Bocor, "
+                    "Vandalisme, Banjir, dan Lainnya. "
+                    "Pilih kategori yang paling dominan atau paling mendesak untuk dilaporkan. "
+                    "Buat deskripsi singkat untuk laporan perbaikan, dan tambahkan permohonan perbaikan. "
+                    "Fokus pada kerusakan yang terlihat dan hindari spekulasi.\n\n"
+                    "Format output yang diinginkan:\n"
+                    "Kategori: [satu kategori yang dipilih]\n"
+                    "Deskripsi: [deskripsi singkat]",
+              },
+            ],
+          },
+        ],
+      });
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': _apiKey,
+      };
+
+      final response = await http.post(
+        Uri.parse(url),
+        headers: headers,
+        body: body,
+      );
+      print("AI RESPONSE: ${response.body}");
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        final text =
+            jsonResponse['candidates'][0]['content']['parts'][0]['text'];
+        print("AI TEXT: $text");
+        if (text != null && text.isNotEmpty) {
+          final lines = text.trim().split('\n');
+          String? category;
+          String? description;
+          for (var line in lines) {
+            final lower = line.toLowerCase();
+            if (lower.startsWith('kategori:')) {
+              category = line.substring(9).trim();
+            } else if (lower.startsWith('deskripsi:')) {
+              description = line.substring(10).trim();
+            } else if (lower.startsWith('keterangan:')) {
+              description = line.substring(11).trim();
+            }
+          }
+          description ??= text.trim();
+          setState(() {
+            _aiCategory = category ?? 'Tidak diketahui';
+            _aiDescription = description!;
+            _descriptionController.text = _aiDescription!;
+          });
+        }
+      } else {
+        debugPrint('Request failed: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Failed to generate AI description: $e');
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
 
   void _showImageSourceDialog() {
     showDialog(
@@ -51,25 +185,33 @@ class _AddPostScreenState extends State<AddPostScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    try {
-      final pickedFile = await _picker.pickImage(source: source);
-      if (pickedFile != null) {
-        final bytes = await pickedFile.readAsBytes();
-        setState(() {
-          _pickedFile = pickedFile;
-          _imageBytes = bytes;
-          _descriptionController.clear();
-        });
-        await _compressAndEncodeImage();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
-      }
+  try {
+    final pickedFile = await _picker.pickImage(source: source);
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _pickedFile = pickedFile;
+        _imageBytes = bytes;
+        _descriptionController.clear(); // Bersihkan text lama
+      });
+      
+      await _compressAndEncodeImage();
+      
+      // Panggil AI untuk generate deskripsi & kategori
+      await _generateDescriptionWithAI(); 
+      
+      // PASTIKAN: Di dalam fungsi _generateDescriptionWithAI() kamu, 
+      // nilai _aiDescription harus dimasukkan ke controller seperti ini:
+      // _descriptionController.text = _aiDescription ?? '';
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
     }
   }
+}
 
   Future<void> _compressAndEncodeImage() async {
     if (_pickedFile == null || _imageBytes == null) return;
@@ -124,48 +266,70 @@ class _AddPostScreenState extends State<AddPostScreen> {
     }
   }
 
-  Future<void> _submitPost() async {
-    if (_base64Image == null || _descriptionController.text.isEmpty) return;
-    setState(() => _isUploading = true);
-    final now = DateTime.now().toIso8601String();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+Future<void> _submitPost() async {
+  // Jika gambar belum ada atau deskripsi kosong, beri tahu user, jangan langsung return diam-diam
+  if (_base64Image == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Gambar belum dipilih atau belum selesai diproses!')),
+    );
+    return;
+  }
+  
+  if (_descriptionController.text.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Deskripsi laporan tidak boleh kosong!')),
+    );
+    return;
+  }
 
-    if (uid == null) {
-      setState(() => _isUploading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('User not found.')));
-      return;
-    }
+  setState(() => _isUploading = true);
+  final now = DateTime.now().toIso8601String();
+  final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    try {
-      await _getLocation();
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
-      final fullName = userDoc.data()?['fullName'] ?? 'Anonymous';
-      await FirebaseFirestore.instance.collection('posts').add({
-        'image': _base64Image,
-        'description': _descriptionController.text,
-        'category': 'Tidak diketahui',
-        'createdAt': now,
-        'latitude': _latitude,
-        'longitude': _longitude,
-        'fullName': fullName,
-        'userId': uid,
-      });
-      if (!mounted) return;
-      Navigator.pop(context);
-    } catch (e) {
-      debugPrint('Upload failed: $e');
-      if (!mounted) return;
-      setState(() => _isUploading = false);
+  if (uid == null) {
+    setState(() => _isUploading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('User tidak terautentikasi. Silakan login ulang.')),
+    );
+    return;
+  }
+
+  try {
+    await _getLocation();
+    
+    // Ambil nama lengkap dari koleksi users
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final fullName = userDoc.data()?['fullName'] ?? 'Anonymous';
+
+    await FirebaseFirestore.instance.collection('posts').add({
+      'image': _base64Image,
+      'description': _descriptionController.text,
+      'category': _aiCategory ?? 'Tidak diketahui', // Menggunakan hasil mapping AI
+      'createdAt': now,
+      'latitude': _latitude,
+      'longitude': _longitude,
+      'fullName': fullName,
+      'userId': uid,
+    });
+
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to upload the post.')),
+        const SnackBar(content: Text('Laporan berhasil dipos!')),
+      );
+      Navigator.pop(context); // Kembali ke HomeScreen setelah sukses
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengirim laporan: $e')),
       );
     }
+  } finally {
+    if (mounted) {
+      setState(() => _isUploading = false);
+    }
   }
+}
 
   @override
   void dispose() {
@@ -210,23 +374,89 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                TextField(
-                  controller: _descriptionController,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    hintText: 'Add a brief description...',
-                    border: OutlineInputBorder(),
-                  ),
+
+            // 1. Efek Shimmer (Muncul saat proses AI generating)
+            if (_isGenerating)
+              Shimmer.fromColors(
+                baseColor: Colors.grey[300]!,
+                highlightColor: Colors.grey[100]!,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 20,
+                      width: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      margin: const EdgeInsets.only(bottom: 12),
+                    ),
+                    Container(
+                      height: 80,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+
+            // 2. Kategori dan Tombol Refresh (Muncul setelah AI berhasil mendeteksi)
+            if (_aiCategory != null && !_isGenerating)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: _showCategorySelection,
+                      child: Chip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_aiCategory!),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.edit, size: 16),
+                          ],
+                        ),
+                        backgroundColor: Colors.blue[100],
+                      ),
+                    ),
+                    if (_imageBytes != null)
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Generate another description',
+                        onPressed: _generateDescriptionWithAI,
+                      ),
+                  ],
+                ),
+              ),
+
+            // 3. Form Input Deskripsi (Disembunyikan dengan Offstage saat AI bekerja)
+            Offstage(
+              offstage: _isGenerating,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  TextField(
+                    controller: _descriptionController,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a brief description...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
+            
             ElevatedButton(
-              onPressed: _isUploading ? null : _submitPost,
+              onPressed: _isUploading || _isGenerating ? null : _submitPost,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 textStyle: const TextStyle(fontSize: 16),
