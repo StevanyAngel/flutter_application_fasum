@@ -15,6 +15,81 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // 1. Tambahkan variabel state untuk melacak kategori yang dipilih
+  String? selectedCategory;
+
+  final List<String> categories = [
+    'Jalan Rusak',
+    'Marka Pudar',
+    'Lampu Mati',
+    'Trotoar Rusak',
+    'Rambu Rusak',
+    'Jembatan Rusak',
+    'Sampah Menumpuk',
+    'Saluran Tersumbat',
+    'Sungai Tercemar',
+    'Sampah Sungai',
+    'Pohon Tumbang',
+    'Taman Rusak',
+    'Fasilitas Rusak',
+    'Pipa Bocor',
+    'Vandalisme',
+    'Banjir',
+    'Lainnya',
+  ];
+
+  // 2. Tambahkan fungsi untuk memunculkan Bottom Sheet Filter
+  void _showCategoryFilter() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.clear),
+                  title: const Text('Semua Kategori'),
+                  onTap: () => Navigator.pop(context, null), // Menghasilkan null jika pilih semua
+                ),
+                const Divider(),
+                ...categories.map(
+                  (category) => ListTile(
+                    title: Text(category),
+                    trailing: selectedCategory == category
+                        ? Icon(
+                            Icons.check,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
+                        : null,
+                    onTap: () => Navigator.pop(context, category), // Mengembalikan string kategori
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // Update status kategori yang dipilih berdasarkan respons bottom sheet
+    if (result != null) {
+      setState(() {
+        selectedCategory = result;
+      });
+    } else {
+      setState(() {
+        selectedCategory = null; // Menampilkan seluruh kategori
+      });
+    }
+  }
+
   Future<void> signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     Navigator.pushReplacement(
@@ -51,6 +126,12 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Home Screen'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // 3. Tambahkan tombol Filter di sebelah kiri tombol Sign Out
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showCategoryFilter,
+            tooltip: 'Filter Kategori',
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => signOut(context),
@@ -70,12 +151,29 @@ class _HomeScreenState extends State<HomeScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final posts = snapshot.data!.docs.toList();
+            // 4. Lakukan penyaringan (filtering) data postingan sebelum masuk ke ListView
+            final filteredPosts = snapshot.data!.docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final postCategory = data['category'] ?? 'Lainnya';
+              
+              // Jika selectedCategory kosong (null), tampilkan semua. Jika tidak null, samakan nilainya.
+              return selectedCategory == null || postCategory == selectedCategory;
+            }).toList();
+
+            // Berikan penanda visual jika hasil filter ternyata kosong
+            if (filteredPosts.isEmpty) {
+              return const Center(
+                child: Text(
+                  'Tidak ada laporan untuk kategori ini.',
+                  style: TextStyle(color: Colors.grey, fontSize: 16),
+                ),
+              );
+            }
 
             return ListView.builder(
-              itemCount: posts.length,
+              itemCount: filteredPosts.length,
               itemBuilder: (context, index) {
-                final data = posts[index].data() as Map<String, dynamic>;
+                final data = filteredPosts[index].data() as Map<String, dynamic>;
                 final imageBase64 = data['image'];
                 final description = data['description'] ?? '';
                 final fullName = data['fullName'] ?? 'Anonim';
